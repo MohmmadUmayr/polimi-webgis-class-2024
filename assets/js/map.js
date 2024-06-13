@@ -6,27 +6,26 @@ import { OSM, ImageWMS, BingMaps, StadiaMaps } from 'ol/source';
 import VectorSource from 'ol/source/Vector';
 import { GeoJSON } from 'ol/format';
 import { fromLonLat } from 'ol/proj';
-import { ScaleLine, FullScreen, MousePosition, ZoomSlider,  } from 'ol/control';
+import { ScaleLine, FullScreen, MousePosition } from 'ol/control';
 import LayerSwitcher from 'ol-layerswitcher';
 import { createStringXY } from 'ol/coordinate';
 import { Style, Stroke } from 'ol/style';
-import VectorLayer from 'ol/layer/Vector';
 
 let osm = new Tile({
+    title: "Open Street Map",
     type: "base",
-    title: "Open Street Maps",
     visible: true,
     source: new OSM()
 });
 let colombiaBoundary = new Image({
-    title: "Colombia Administrative level 0",
+    title: "Colombia Boundary",
     source: new ImageWMS({
         url: 'https://www.gis-geoserver.polimi.it/geoserver/wms',
         params: { 'LAYERS': 'gis:COL_adm0', 'STYLES': 'restricted' }
     })
 });
 var colombiaDepartments = new Image({
-    title: "Colombia Administrative level 1",
+    title: "Colombia Departments",
     source: new ImageWMS({
         url: 'https://www.gis-geoserver.polimi.it/geoserver/wms',
         params: { 'LAYERS': 'gis:COL_adm1' }
@@ -56,16 +55,10 @@ var colombiaRivers = new Image({
 let basemapLayers = new Group({
     title: "Base Maps",
     layers: [osm]
-})
-
+});
 let overlayLayers = new Group({
     title: "Overlay Layers",
-    layers: [
-        colombiaBoundary, 
-        colombiaDepartments, 
-        colombiaRivers, 
-        colombiaRoads
-    ]
+    layers: [colombiaDepartments, colombiaRivers, colombiaRoads]
 })
 
 // Map Initialization
@@ -79,18 +72,19 @@ let map = new Map({
 });
 
 // Add the map controls:
-map.addControl(new ScaleLine());
+map.addControl(new ScaleLine()); //Controls can be added using the addControl() map function
 map.addControl(new FullScreen());
-map.addControl(new MousePosition({
-    coordinateFormat: createStringXY(4),
-    projection: 'EPSG:4326',
-    className: 'custom-control',
-    placeholder: '0.0000, 0.0000'
-}));
+map.addControl(
+    new MousePosition({
+        coordinateFormat: createStringXY(4),
+        projection: 'EPSG:4326',
+        className: 'custom-control',
+        placeholder: '0.0000, 0.0000'
+    })
+);
 
-let layerSwitcher = new LayerSwitcher({});
+var layerSwitcher = new LayerSwitcher({});
 map.addControl(layerSwitcher);
-
 
 //OPTIONAL
 //Add the Bing Maps layers
@@ -104,7 +98,6 @@ var bingRoads = new Tile({
         imagerySet: 'Road'
     })
 });
-
 var bingAerial = new Tile({
     title: 'Bing Maps—Aerial',
     type: 'base',
@@ -133,32 +126,30 @@ var stadiaToner = new Tile({
         layer: 'stamen_toner'
     })
 })
-//basemapLayers.addLayer(stadiaWatercolor);
 basemapLayers.getLayers().extend([stadiaWatercolor, stadiaToner]);
 
 //Add the WFS layer
-let wfsSource = new VectorSource()
-let wfsLayer = new Vector({
+let vectorSource = new VectorSource({});
+const vectorLayer = new Vector({
     title: "Colombia water areas",
-    source: wfsSource,
-
+    source: vectorSource,
     style: new Style({
         stroke: new Stroke({
-            color: 'rgb(255, 102, 102)',
+            color: 'rgb(255, 102, 0)',
             width: 4
         })
     }),
-    zIndex: 9999
+    zIndex: 10
 });
-overlayLayers.getLayers().extend([wfsLayer]);
+overlayLayers.getLayers().extend([vectorLayer]);
+
 
 // This allows to use the function in a callback!
 function loadFeatures(response) {
-    wfsSource.addFeatures(new GeoJSON().readFeatures(response))
+    vectorSource.addFeatures(new GeoJSON().readFeatures(response))
 }
 // This is not a good practice, but works for the jsonp.
 window.loadFeatures = loadFeatures;
-
 
 var base_url = "https://www.gis-geoserver.polimi.it/geoserver/gis/ows?";
 var wfs_url = base_url;
@@ -170,12 +161,11 @@ wfs_url += "outputFormat=text%2Fjavascript&"
 wfs_url += "srsname=EPSG:3857&"
 wfs_url += "format_options=callback:loadFeatures"
 
-console.log(wfs_url);
-
+// This will request the WFS layer once the map is rendered.
+// Uses the map event 'postrender': https://openlayers.org/en/v8.2.0/apidoc/module-ol_MapEvent-MapEvent.html#event:postrender
 map.once('postrender', (event) => {
     // Load the WFS layer
     $.ajax({ url: wfs_url, dataType: 'jsonp' });
-    
 })
 
 //Add the code for the Pop-up
@@ -188,7 +178,6 @@ var popup = new Overlay({
 });
 map.addOverlay(popup);
 
-// The click event handler for closing the popup.
 // This ensures that JQuery ($) is already available in the page.
 $(document).ready(function () {
     map.on('singleclick', function (event) {
@@ -212,7 +201,6 @@ $(document).ready(function () {
             if (colombiaRoads.getVisible()) {
                 var viewResolution = (map.getView().getResolution());
                 var url = colombiaRoads.getSource().getFeatureInfoUrl(event.coordinate, viewResolution, 'EPSG:3857', { 'INFO_FORMAT': 'text/html' });
-                console.log(url);
 
                 if (url) {
                     var pixel = event.pixel;
@@ -232,21 +220,17 @@ $(document).ready(function () {
 });
 
 
-
-// Adding map event for pointermove
 // The click event handler for closing the popup.
 closer.onclick = function () {
     popup.setPosition(undefined);
-    closer.blur(); 
+    closer.blur();
     return false;
 };
 
-map.on('pointermove', function(event){
+
+// Adding map event for pointermove
+map.on('pointermove', function (event) {
     var pixel = map.getEventPixel(event.originalEvent);
     var hit = map.hasFeatureAtPixel(pixel);
     map.getTarget().style.cursor = hit ? 'pointer' : '';
-});
-
-map.on('moveend', function(event){
-    console.log("moved map");
 });
